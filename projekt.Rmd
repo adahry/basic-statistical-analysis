@@ -1,0 +1,312 @@
+***Projekt zaliczeniowy 1***
+
+Ada Hryniewicka
+
+Wszędzie, gdzie nie podano inaczej w treści polecenia, przyjmuję poziom istotności równy 0.05.
+
+**1. Wczytywanie danych**
+
+```{r}
+dane <- read.table("/Users/ads/Desktop/SAD/projekt1/people.tab.csv",header = TRUE)
+colnames(dane)
+head(dane)
+sum(is.na(dane))
+```
+
+```{r}
+df = subset(dane, select = -c(4,5,7) )
+cor(x=df, y = NULL, use = "everything",
+    method = c("pearson", "kendall", "spearman"))
+```
+
+Występuje 9 obserwacji. Dane ilościowe: wiek, waga, wzrost, liczba dzieci, wydatki i oszczędności. Dane jakościowe: płeć, stan cywilny oraz budynek. Dla zaobserowanych danych na wykresach widać korelacje pomiędzy wiekiem, a oszczędnościami; między wzrostem, a wagą oraz między liczbą dzieci, a wydatkami. W zbiorze danych występują braki.
+
+**2. Wykresy podsumowujące dane**
+
+```{r}
+library(ggplot2)
+library(GGally)
+ggpairs(dane, columns=c(1, 2, 3, 6, 8, 9)) 
+
+# ggpairs(dane, aes(col=plec), columns=c(1, 2, 3, 6, 8, 9)) 
+# ggpairs(dane, aes(col=stan_cywilny), columns=c(1, 2, 3, 6, 8, 9)) 
+# ggpairs(dane, aes(col=budynek), columns=c(1, 2, 3, 6, 8, 9)) 
+
+```
+
+```{r}
+dane=na.omit(dane)
+ggplot(data = data.frame('Oszczednosci' = dane$oszczednosci, 'Plec' = dane$plec)) + geom_boxplot(aes(x = Plec, y = Oszczednosci)) + theme_minimal()
+```
+
+```{r}
+library(plyr)
+budynki <- count(dane, 'budynek')
+budynki_count <- budynki$freq
+
+pie_labels <- paste0(round(100 * budynki_count/sum(budynki_count), 2), "%")
+
+pie(budynki_count, labels = paste0(budynki$budynek,' ' ,pie_labels), col=cm.colors(length(budynki_count)), main='Wykres kołowy dla zmiennej budynek')
+```
+
+```{r}
+ggplot(data.frame(dane$stan_cywilny), aes(x=dane$stan_cywilny)) +
+  geom_bar() + xlab('Stan Cywilny') +ylab('count') + annotate("text", x=2.3, y=290, label= "TRUE-zamężna/żonaty") + annotate("text", x=2.3, y=270, label= "FALSE-kawaler/panna")
+```
+
+**3. P-wartości dla hipotez o wartości średniej m=170 i mediane me=165(cm) dla zmiennej wzrost.**
+
+Pierwszy krok to obejrzenie rozkładu danych na histogramie i sprawdzenie normalności rozkładu testem Shapiro- Wilka,
+
+```{r}
+hist(dane$wzrost)
+shapiro.test(dane$wzrost)$p.value
+```
+
+Nie ma podstaw do odrzucenia hipotezy, że rozkład jest normalny p.value=0.42, dla testu S-W. Do przetestowania hipotezy o wartości średniej można wykorzystać test t-studenta.
+
+```{r}
+t.test(x=dane$wzrost,mu=170, alternative='less')
+```
+
+P.value dla średniej wyniosło 0.03725, są podstawy do odrzucenia hipotezy zerowej jeśli przyjmemy α = 0.05. Dla sprawdzenie mediany wykorzystano nieparametryczny test Wilcoxona.
+
+```{r}
+wilcox.test(dane$wzrost, mu = 165, alternative = "less")
+```
+
+P.value dla podanej mediany wyniosło 0.999, nie ma podstaw do odrzucenia hipotezy zerowej.
+
+**4. Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej wiek.** 
+
+Korzystałam z wzorów dla nieznanej średniej i odchyleniu standardowym przy założeniu, że próba ma rozkład normalny (sprawdzenie histogramu oraz q-q plota). Wykorzystałam rozkład t-studenta dla średniej i rozkład chi-kwadrat dla odchylenia.
+
+```{r}
+hist(dane$wiek)
+qqnorm(dane$wiek)
+qqline(dane$wiek)
+```
+
+```{r}
+srednia<-mean(dane$wiek)
+s<- qt(0.01,length(dane$wiek)-1)*sd(dane$wiek)/(sqrt(length(dane$wiek)-1))
+srednia+s
+srednia-s
+```
+
+Przedział ufności dla średniej to (38.53,40.47).
+
+```{r}
+chi1<-qchisq(1-0.005,length(dane$wiek)-1)
+chi2<-qchisq(0.005,length(dane$wiek)-1)
+sqrt(length(dane$wiek)*var(dane$wiek)/chi1)
+sqrt(length(dane$wiek)*var(dane$wiek)/chi2)
+
+```
+
+Przedział ufności dla odchylenia standardowego to (8.23,9.75).
+
+Dla sprawdzenia kwantyli wykorzystałam bibliotekę quantileCI, która opisana jest na załączonej stronie o kwantylach. Założenia są spełnione, ponieważ jest ona odporna na różnego typu dystrybucje i rozmiary próby. Dodatkowo została opisana jako jedna z najszybszych metod i polecana przez autorów do używania w praktyce.
+
+Dla kwantyli:
+
+```{r}
+library(quantileCI)
+quantile_confint_nyblom(x=dane$wiek, p=0.25, conf.level=0.99,interpolate=TRUE)
+quantile_confint_nyblom(x=dane$wiek, p=0.5, conf.level=0.99,interpolate=TRUE)
+quantile_confint_nyblom(x=dane$wiek, p=0.75, conf.level=0.99,interpolate=TRUE)
+```
+Kwantyl 1/4: (32,35)
+Kwantyl 2/4(mediana): (38,40)
+Kwantyl 3/4: (43,47)
+
+**5. Testowanie hipotez na poziomie istotności 0.1**
+
+1.  H0: Średnie wartości wydatków pomiędzy osobami zamężnymi/żonatymi a pannami/kawalerami są równe. H1:Średnie wartości wydatków pomiędzy osobami zamężnymi/żonatymi a pannami/kawalerami są różne.
+
+Sprawdzenie z jakim rozkładem mam doczynienia. Dla obu zestawu danych- zamężne/żonaci i panny/kawalerowie.
+
+```{r}
+z<-dane$wydatki[dane$stan_cywilny=='TRUE']
+w<-dane$wydatki[dane$stan_cywilny=='FALSE']
+
+shapiro.test(z)$p.value
+qqnorm(z)
+qqline(z)
+shapiro.test(w)$p.value
+qqnorm(w)
+qqline(w)
+
+```
+
+Z q-q plota i testu Shapiro-Wilka, możemy wnioskować, że nie ma podstaw do odrzucenia hipotezy, że rozkłady są normalne. Próbę możemy przyjąć za dużą, bo większa od 30 w obu przypadkach. Zastosuję test Welcha, który jest uogólnieniem testu t-studenta dla dwóch prób o nieznanych wariancjach. Przed wykonaniem testu wykonuje sprawdzenie jak wygląda rozkład danych w tych grupach w postaci boxplota.
+
+```{r}
+boxplot(z, w, names=c("True","False"))
+```
+Dla sprawdzenia czy wariancje są równe wykonuje test Fishera. 
+```{r}
+var.test(z, w, alternative = "two.sided")
+```
+Z testu Fishera widać, że nie można założyć, że wariancje są równe. 
+Z boxplota Widać różnicę w średniej. Przeprowadzam test Welcha.
+
+```{r}
+t.test(w, z)
+```
+
+Wniosek: Jest podstawa do odrzucenia hipotezy zerowej. Średnie wydatki nie są równe.
+
+2.  H0: Wydatki i oszczędności są niezależne H1: Wydatki i oszczędności są zależne
+
+```{r}
+wyd<-dane$wydatki
+osz<-dane$oszczednosci
+
+shapiro.test(wyd)$p.value
+qqnorm(wyd)
+qqline(wyd)
+shapiro.test(osz)$p.value
+qqnorm(osz)
+qqline(osz)
+
+```
+
+W tym przypadku nie zakładamy, że dane mają rozkład normalny. W takim wypadku wybieram test Spearmana, który dobrze sprawdza się w przypadku rozkładu innego niż normalny i jest odporny na przypadki odstające.
+
+```{r}
+cor.test(wyd, osz,  method = "spearman")
+```
+
+Nie ma podstaw do odrzucenia hipotezy zerowej. Wydatki i oszczędności nie wykazują zależności.
+
+3.  H0: Płeć i stan cywilny są niezależne. H1: Płeć i stan cywilny są zależne.
+
+```{r}
+p<-dane$plec
+s<-dane$stan_cywilny
+#tabela kotyngencji
+table(p, s)
+#zwizualizowanie sobie danych w postaci barplotu 
+ggplot(dane) +
+  aes(x = plec, fill = stan_cywilny) +
+  geom_bar(position = "dodge")
+```
+
+Do testowania zmiennych jakościowych wykorzytsam test niezależności chi kwadrat. Założenie o liczebności próby jest spełnione, tak samo z niezależnością grup.
+
+```{r}
+chisq.test(table(p,s),correct = FALSE)
+#alternatywna funkcja
+#summary(table(p,s))
+```
+
+Nie ma podstaw do odrzucenia hipotezy zerowej. Płeć i stan cywilny są niezależne.
+
+4.  H0: zmienna waga ma rozkład wykładniczy z parametrem 
+H1: zmienna waga nie ma rozkładu wykładniczego z parametrem 5.
+
+Do sprawdzenia tej hipotezy wykorzystałam test Kolmogorova-Smirnova.
+
+```{r}
+ks.test(dane$waga, 'pexp',5)
+```
+
+Są podstawy do orzucenia hipotezy zerowej. Nie można stwierdzić, aby zmienna waga miała rozkład wykładniczy o parametrze 5.
+
+**6. Model regresji liniowej**
+
+Dane jakościowe należy zmienić na typ factor.
+
+```{r}
+dane$plec <- as.factor(dane$plec)
+dane$budynek <- as.factor(dane$budynek)
+dane$stan_cywilny <- as.factor(dane$stan_cywilny)
+model <- lm(oszczednosci ~ ., dane)
+summary(model)
+```
+
+p.values dla każdego parametru zaprezentowane są w kolumnie Pr(\>\|t\|). Oszacowania współczynników są wypisane w kolumnie Estimate. R\^2=0.9673
+
+```{r}
+#Obliczanie RSS
+with(summary(model), df[2] * sigma^2)
+#alternatywnie 
+#library(qpcR)
+#RSS(model)
+```
+
+RSS=4681334 
+
+Dla upewnienia się konstruuję przedziały ufności i sprawdzam, czy należy do nich 0.
+
+```{r}
+confint(model)
+```
+
+Stan cywilny i płeć w swoich przedziałach ufności zawierają 0. Możemy zakładać, że mogą być nieistotne statystycznie. Zdecydowałam, że zmienną, którą odrzucam jest płeć i przystępuje do tworzenia nowego modelu bez niej.
+
+```{r}
+model2 <- lm(oszczednosci ~ . -plec , dane)
+summary(model2)
+```
+
+```{r}
+R1<-0.9673
+R2<-0.9673
+roznica_R<-R1-R2
+RSS1<-4681334
+RSS2<-with(summary(model2), df[2] * sigma^2)
+roznica_RSS<-RSS2-RSS1
+roznica_R
+roznica_RSS
+```
+
+Różnica pomiędzy wartościami R\^2, przed usunięciem zmiennej płeć i po wynosi 0. Natomiast RSS, zwiększyło się o 213.62.
+
+Sprawdzenie czy jest spełnione założenie o formie funkcyjnej:
+
+```{r}
+library(lmtest)
+resettest(model2)
+```
+
+P.value \> 0.05, więc nie ma podstaw do odrzucenia hipotezy zerowej. Jednak trzeba mieć na uwadze, że wartość p.value jest bliska progu 0.05.
+
+Wykresy diagnostyczne: 
+
+1. Wykres reszt vs wartości dopasowanych, aby sprawdzić, czy występuje heteroskedastyczność.
+
+```{r}
+plot(model2, which = 1)
+```
+
+Linia nie ma znaczących odchyleń od prostej- można stwierdzić, że występuje homoskedastyczność.
+
+```{r}
+oszcz.res = resid(model2)
+ plot(dane$oszczednosci, oszcz.res, 
+     ylab="Reszty", xlab="Oszczędności", 
+     main="Wykres zależnośći reszt od zmiennej oszczedności") 
+abline(0, 0) 
+```
+
+Wykres wygląda na poprawny, wariancja nie rośnie, nie występują trendy.
+
+2.  Wykres reszt studentyzowanych
+
+```{r}
+library(MASS)
+mres <- studres(model2)
+plot(dane$oszczednosci, mres,  ylab='Reszty studentyzowane', xlab='Oszczędności') 
+```
+
+Wnioski takie same jak w wykresie powyżej. 
+
+3. Wykres dźwigni
+
+```{r}
+plot(model2, which=5)
+```
+
+Nie ma niepokojących obserwacji w skrajnym górnym i dolnym prawym rogu, które miałyby wysokie wartości dźwigni i wysoką wartość reszt.
